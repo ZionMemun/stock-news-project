@@ -367,15 +367,29 @@ def render_headlines(df):
     recent_df = df.head(5)
 
     for _, row in recent_df.iterrows():
+        url = row.get("url", "#")
+        title = row.get("title", "")
+        stock_symbol = row.get("stock_symbol", "")
+        company_name = row.get("company_name", "")
+        source = row.get("source", "")
+        published_local = row.get("published_local", "")
+        summary = row.get("summary", "")
+
         st.markdown(
             f"""
             <div class="headline-card">
-                <div class="headline-title">{row.get("title", "")}</div>
-                <div class="headline-meta">
-                    {row.get("stock_symbol", "")} | {row.get("company_name", "")} | {row.get("source", "")}
-                    | Published: {row.get("published_local", "")}
+                <div class="headline-title">
+                    <a href="{url}" target="_blank" style="text-decoration:none; color:inherit;">
+                        {title}
+                    </a>
                 </div>
-                <div class="headline-summary">{row.get("summary", "")}</div>
+                <div class="headline-meta">
+                    {stock_symbol} | {company_name} | {source} | Published: {published_local}
+                </div>
+                <div class="headline-summary">{summary}</div>
+                <div style="margin-top:8px;">
+                    <a href="{url}" target="_blank">Open article</a>
+                </div>
             </div>
             """,
             unsafe_allow_html=True,

@@ -45,6 +45,25 @@ def create_table():
     conn.close()
 
 
+def create_tracked_stocks_table():
+    """
+    Create the tracked_stocks table if it does not already exist.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS tracked_stocks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            stock_symbol TEXT UNIQUE,
+            company_name TEXT
+        )
+    """)
+
+    conn.commit()
+    conn.close()
+
+
 def insert_news(news_item):
     """
     Insert a news item into the database.
@@ -92,6 +111,14 @@ def get_all_news():
     return rows
 
 
+def get_news_as_dicts():
+    """
+    Retrieve all news records as a list of dictionaries.
+    """
+    rows = get_all_news()
+    return [dict(row) for row in rows]
+
+
 def delete_news_by_id(news_id):
     """
     Delete a news item from the database by its ID.
@@ -131,29 +158,110 @@ def reset_news_table():
     conn.commit()
     conn.close()
 
-def get_news_as_dicts():
+
+def get_tracked_stocks():
     """
-    Retrieve all news records as a list of dictionaries.
+    Retrieve all tracked stocks.
     """
-    rows = get_all_news()
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT stock_symbol, company_name
+        FROM tracked_stocks
+        ORDER BY stock_symbol
+    """)
+    rows = cursor.fetchall()
+
+    conn.close()
     return [dict(row) for row in rows]
 
 
-def get_unique_values(column_name):
+def add_tracked_stock(stock_symbol, company_name):
     """
-    Retrieve distinct non-null values from a given column.
+    Add a stock to the tracked stocks table.
     """
-    allowed_columns = {"stock_symbol", "company_name", "source", "sentiment_label"}
-    if column_name not in allowed_columns:
-        raise ValueError(f"Unsupported column: {column_name}")
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        INSERT OR IGNORE INTO tracked_stocks (stock_symbol, company_name)
+        VALUES (?, ?)
+    """, (stock_symbol, company_name))
+
+    conn.commit()
+    conn.close()
+
+
+def delete_tracked_stock(stock_symbol):
+    """
+    Remove a stock from the tracked stocks table by symbol.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        DELETE FROM tracked_stocks
+        WHERE stock_symbol = ?
+    """, (stock_symbol,))
+
+    conn.commit()
+    conn.close()
+
+def delete_news_by_stock_symbol(stock_symbol):
+    """
+    Delete all news records for a given stock symbol.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        DELETE FROM news
+        WHERE stock_symbol = ?
+    """, (stock_symbol,))
+
+    conn.commit()
+    conn.close()
+
+
+def delete_news_by_exact_date(target_date, date_column="published_at"):
+    """
+    Delete all news records where the selected date column matches the target date.
+    target_date format: YYYY-MM-DD
+    """
+    allowed_columns = {"published_at", "collected_at"}
+    if date_column not in allowed_columns:
+        raise ValueError(f"Unsupported date column: {date_column}")
 
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute(
-        f"SELECT DISTINCT {column_name} FROM news WHERE {column_name} IS NOT NULL ORDER BY {column_name}"
-    )
-    values = [row[0] for row in cursor.fetchall()]
+    cursor.execute(f"""
+        DELETE FROM news
+        WHERE substr({date_column}, 1, 10) = ?
+    """, (target_date,))
 
+    conn.commit()
     conn.close()
-    return values
+
+
+def delete_news_up_to_date(target_date, date_column="published_at"):
+    """
+    Delete all news records where the selected date column
+    is on or before the target date.
+    target_date format: YYYY-MM-DD
+    """
+    allowed_columns = {"published_at", "collected_at"}
+    if date_column not in allowed_columns:
+        raise ValueError(f"Unsupported date column: {date_column}")
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(f"""
+        DELETE FROM news
+        WHERE substr({date_column}, 1, 10) <= ?
+    """, (target_date,))
+
+    conn.commit()
+    conn.close()

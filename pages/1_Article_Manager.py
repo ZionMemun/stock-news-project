@@ -5,6 +5,12 @@ from database.db import (
     get_news_as_dicts,
     delete_news_by_id,
     delete_all_news,
+    get_tracked_stocks,
+    add_tracked_stock,
+    delete_tracked_stock,
+    delete_news_by_stock_symbol,
+    delete_news_by_exact_date,
+    delete_news_up_to_date,
 )
 
 st.set_page_config(
@@ -177,13 +183,57 @@ def main():
         <div class="manager-hero">
             <div class="manager-title">Articles Manager</div>
             <div class="manager-subtitle">
-                Review the full dataset, filter by stock and source, export rows, and remove records safely when needed.
+                Manage tracked stocks, inspect article records, export data, and delete records safely when needed.
             </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
+    # ---------- Tracked Stocks ----------
+    st.subheader("Tracked Stocks")
+
+    tracked_stocks = get_tracked_stocks()
+
+    stock_card_left, stock_card_right = st.columns([1.4, 1])
+
+    with stock_card_left:
+        st.markdown("Add a new stock to the tracking list.")
+
+        new_symbol = st.text_input("Stock symbol").strip().upper()
+        new_company = st.text_input("Company name").strip()
+
+        if st.button("Add stock", width="stretch"):
+            if new_symbol and new_company:
+                add_tracked_stock(new_symbol, new_company)
+                st.success(f"Added {new_symbol} - {new_company}")
+                st.rerun()
+            else:
+                st.warning("Please fill in both stock symbol and company name.")
+
+    with stock_card_right:
+        st.markdown("Currently tracked stocks:")
+
+        if tracked_stocks:
+            for stock in tracked_stocks:
+                row_col1, row_col2 = st.columns([3, 1])
+                with row_col1:
+                    st.write(f"**{stock['stock_symbol']}** — {stock['company_name']}")
+                with row_col2:
+                    if st.button(
+                        "Remove",
+                        key=f"remove_{stock['stock_symbol']}",
+                        width="stretch"
+                    ):
+                        delete_tracked_stock(stock["stock_symbol"])
+                        st.success(f"Removed {stock['stock_symbol']}")
+                        st.rerun()
+        else:
+            st.info("No tracked stocks yet.")
+
+    st.divider()
+
+    # ---------- Data ----------
     df = load_data()
 
     if df.empty:
@@ -213,6 +263,46 @@ def main():
 
     filtered_df = apply_filters(df, selected_stocks, selected_sources, search_text)
 
+    # ---------- Table ----------
+    st.subheader("Articles Table")
+
+    display_columns = [
+        "display_id",
+        "stock_symbol",
+        "company_name",
+        "source",
+        "title",
+        "summary",
+        "published_local",
+        "collected_local",
+        "sentiment_label",
+        "sentiment_score",
+    ]
+
+    if show_urls:
+        display_columns.append("url")
+
+    existing_columns = [col for col in display_columns if col in filtered_df.columns]
+
+    column_config = {}
+    if "url" in existing_columns:
+        column_config["url"] = st.column_config.LinkColumn(
+            "Article URL",
+            display_text="Open article"
+        )
+
+    st.dataframe(
+        filtered_df[existing_columns],
+        column_config=column_config,
+        width="stretch",
+        hide_index=True,
+    )
+
+    st.divider()
+
+    # ---------- Export ----------
+    st.subheader("Export")
+
     export_df = filtered_df[[
         col for col in [
             "display_id", "stock_symbol", "company_name", "source", "title", "summary",
@@ -229,8 +319,12 @@ def main():
         width="stretch",
     )
 
+    st.divider()
+
+    # ---------- Delete by ID ----------
+    st.subheader("Delete by Display ID")
+
     st.markdown('<div class="control-card">', unsafe_allow_html=True)
-    st.subheader("Delete Controls")
 
     left_col, right_col = st.columns([2.8, 1])
 
@@ -252,31 +346,64 @@ def main():
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-    st.subheader("🧾 Articles Table")
+    st.divider()
 
-    display_columns = [
-        "display_id",
-        "stock_symbol",
-        "company_name",
-        "source",
-        "title",
-        "summary",
-        "published_local",
-        "collected_local",
-        "sentiment_label",
-        "sentiment_score",
-    ]
+    # ---------- Bulk Delete ----------
+    st.subheader("Bulk Delete Controls")
+    st.markdown('<div class="control-card">', unsafe_allow_html=True)
 
-    if show_urls:
-        display_columns.append("url")
+    bulk_col1, bulk_col2 = st.columns(2)
 
-    existing_columns = [col for col in display_columns if col in filtered_df.columns]
+    # Left side: by date
+    with bulk_col1:
+        st.markdown("#### Delete by Date")
 
-    st.dataframe(
-        filtered_df[existing_columns],
-        width="stretch",
-        hide_index=True,
-    )
+        date_mode = st.radio(
+            "Delete mode",
+            ["Only selected day", "Selected day and all previous days"],
+            key="bulk_delete_date_mode"
+        )
+
+        date_basis = st.selectbox(
+            "Use date from",
+            ["published_at", "collected_at"],
+            key="bulk_delete_date_basis"
+        )
+
+        selected_date = st.date_input(
+            "Select date",
+            key="bulk_delete_date_value"
+        )
+
+        selected_date_str = selected_date.strftime("%Y-%m-%d")
+
+        if st.button("Run date-based deletion", width="stretch"):
+            if date_mode == "Only selected day":
+                delete_news_by_exact_date(selected_date_str, date_column=date_basis)
+                st.success(f"Deleted all rows where {date_basis} = {selected_date_str}")
+            else:
+                delete_news_up_to_date(selected_date_str, date_column=date_basis)
+                st.success(f"Deleted all rows where {date_basis} <= {selected_date_str}")
+
+            st.rerun()
+
+    # Right side: by stock
+    with bulk_col2:
+        st.markdown("#### Delete by Stock Symbol")
+
+        bulk_stock_options = sorted(df["stock_symbol"].dropna().unique().tolist())
+        selected_stock_for_delete = st.selectbox(
+            "Select stock symbol to delete",
+            bulk_stock_options,
+            key="bulk_delete_stock"
+        )
+
+        if st.button("Delete all rows for selected stock", width="stretch"):
+            delete_news_by_stock_symbol(selected_stock_for_delete)
+            st.success(f"Deleted all rows for stock symbol {selected_stock_for_delete}")
+            st.rerun()
+
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
 if __name__ == "__main__":

@@ -22,10 +22,6 @@
 #
 #
 # def main():
-#     """
-#     Fetch news from all configured sources, keep only recent news,
-#     remove duplicates, save results to the database, and print a sample.
-#     """
 #     create_table()
 #
 #     all_news = []
@@ -34,18 +30,31 @@
 #         symbol = stock["symbol"]
 #         company_name = stock["company_name"]
 #
+#         finnhub_news = []
+#         google_news = []
+#
 #         try:
-#             all_news.extend(fetch_finnhub_news(symbol, company_name))
+#             finnhub_news = fetch_finnhub_news(symbol, company_name)
+#             print(f"Finnhub returned {len(finnhub_news)} items for {symbol}")
 #         except Exception as exc:
 #             print(f"Finnhub failed for {symbol}: {exc}")
 #
 #         try:
-#             all_news.extend(fetch_google_news(symbol, company_name))
+#             google_news = fetch_google_news(symbol, company_name)
+#             print(f"Google RSS returned {len(google_news)} items for {symbol}")
 #         except Exception as exc:
 #             print(f"Google RSS failed for {symbol}: {exc}")
 #
-#     all_news = filter_recent_news(all_news, hours_back=2)
+#         all_news.extend(finnhub_news)
+#         all_news.extend(google_news)
+#
+#     print(f"Total before time filter: {len(all_news)}")
+#
+#     all_news = filter_recent_news(all_news, hours_back=48)
+#     print(f"Total after time filter: {len(all_news)}")
+#
 #     all_news = deduplicate(all_news)
+#     print(f"Total after deduplication: {len(all_news)}")
 #
 #     for news_item in all_news:
 #         insert_news(news_item)
@@ -62,10 +71,11 @@
 # if __name__ == "__main__":
 #     main()
 
-from database.db import create_table, insert_news, get_all_news
+from database.db import create_table, create_tracked_stocks_table, insert_news, get_all_news, get_tracked_stocks
+from database.db import add_tracked_stock
 from collectors.finnhub_collector import fetch_finnhub_news
 from collectors.google_rss import fetch_google_news
-from config import STOCKS
+#from config import STOCKS
 from ml.preprocess import filter_recent_news
 
 
@@ -87,11 +97,17 @@ def deduplicate(news_list):
 
 def main():
     create_table()
+    create_tracked_stocks_table()
 
     all_news = []
+    tracked_stocks = get_tracked_stocks()
+    print("Tracked stocks:", tracked_stocks)
+    if not tracked_stocks:
+        print("No tracked stocks found. Nothing to collect.")
+        return
 
-    for stock in STOCKS:
-        symbol = stock["symbol"]
+    for stock in tracked_stocks:
+        symbol = stock["stock_symbol"]
         company_name = stock["company_name"]
 
         finnhub_news = []
