@@ -37,3 +37,8 @@ logs/
 # =========================
 .DS_Store
 Thumbs.db
+
+training/finbert_torch_baseline
+
+# Data
+training/*.csv
