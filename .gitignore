@@ -39,6 +39,8 @@ logs/
 Thumbs.db
 
 training/finbert_torch_baseline
+training/finetuned_finbert_on_clean_data/
 
 # Data
 training/*.csv
+
