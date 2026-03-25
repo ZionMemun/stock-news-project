@@ -130,7 +130,7 @@ def main():
 
     print(f"Total before time filter: {len(all_news)}")
 
-    all_news = filter_recent_news(all_news, hours_back=48)
+    all_news = filter_recent_news(all_news, hours_back=3)
     print(f"Total after time filter: {len(all_news)}")
 
     all_news = deduplicate(all_news)
