@@ -12,6 +12,14 @@ from database.db import (
     delete_news_by_exact_date,
     delete_news_up_to_date,
 )
+from ui_helpers import (
+    init_ui_state,
+    get_theme_colors,
+    inject_css,
+    render_global_sidebar,
+    prepare_dataframe,
+    apply_filters,
+)
 
 st.set_page_config(
     page_title="Articles Manager",
@@ -19,178 +27,34 @@ st.set_page_config(
 )
 
 
-def get_theme_colors(mode: str):
-    if mode == "Light":
-        return {
-            "bg": "#f3f6fb",
-            "bg_2": "#e8eef7",
-            "card": "#ffffff",
-            "card_2": "#f8fbff",
-            "border": "rgba(100, 116, 139, 0.18)",
-            "text_primary": "#0f172a",
-            "text_secondary": "#475569",
-            "sidebar_1": "#e2e8f0",
-            "sidebar_2": "#f8fafc",
-            "hero_1": "#dbeafe",
-            "hero_2": "#eff6ff",
-        }
-
-    return {
-        "bg": "#0b1220",
-        "bg_2": "#0f172a",
-        "card": "#121a2b",
-        "card_2": "#0f172a",
-        "border": "rgba(148, 163, 184, 0.16)",
-        "text_primary": "#e5e7eb",
-        "text_secondary": "#94a3b8",
-        "sidebar_1": "#0a0f1c",
-        "sidebar_2": "#111827",
-        "hero_1": "#0f172a",
-        "hero_2": "#172554",
-    }
-
-
-def inject_css(colors):
-    st.markdown(
-        f"""
-        <style>
-            .stApp {{
-                background: linear-gradient(180deg, {colors["bg"]} 0%, {colors["bg_2"]} 100%);
-                color: {colors["text_primary"]};
-            }}
-
-            .block-container {{
-                max-width: 96rem;
-                padding-top: 4.7rem;
-                padding-bottom: 2rem;
-            }}
-
-            h1, h2, h3 {{
-                color: {colors["text_primary"]} !important;
-            }}
-
-            [data-testid="stSidebar"] {{
-                background: linear-gradient(180deg, {colors["sidebar_1"]} 0%, {colors["sidebar_2"]} 100%);
-                border-right: 1px solid {colors["border"]};
-            }}
-
-            [data-testid="stSidebar"] * {{
-                color: {colors["text_primary"]} !important;
-            }}
-
-            .manager-hero {{
-                background: linear-gradient(135deg, {colors["hero_1"]} 0%, {colors["hero_2"]} 100%);
-                border: 1px solid {colors["border"]};
-                border-radius: 24px;
-                padding: 22px 24px;
-                margin-bottom: 18px;
-                box-shadow: 0 16px 40px rgba(0, 0, 0, 0.10);
-            }}
-
-            .manager-title {{
-                font-size: 1.9rem;
-                font-weight: 800;
-                color: {colors["text_primary"]};
-                margin-bottom: 6px;
-            }}
-
-            .manager-subtitle {{
-                color: {colors["text_secondary"]};
-                font-size: 0.98rem;
-            }}
-
-            .control-card {{
-                background: linear-gradient(135deg, {colors["card"]}, {colors["card_2"]});
-                border: 1px solid {colors["border"]};
-                border-radius: 18px;
-                padding: 16px;
-                margin-bottom: 16px;
-                box-shadow: 0 10px 28px rgba(0,0,0,0.10);
-            }}
-
-            div[data-testid="stDataFrame"] {{
-                border-radius: 16px;
-                overflow: hidden;
-                border: 1px solid {colors["border"]};
-                box-shadow: 0 10px 28px rgba(0,0,0,0.10);
-            }}
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
 def load_data():
     data = get_news_as_dicts()
     return pd.DataFrame(data) if data else pd.DataFrame()
 
 
-def convert_utc_to_timezone(series, timezone_name):
-    if series.empty:
-        return series
-    dt_series = pd.to_datetime(series, errors="coerce", utc=True)
-    return dt_series.dt.tz_convert(timezone_name)
-
-
-def prepare_dataframe(df, timezone_name):
-    df = df.copy()
-
-    if "published_at" in df.columns:
-        published_local = convert_utc_to_timezone(df["published_at"], timezone_name)
-        df["published_local_dt"] = published_local
-        df["published_local"] = published_local.dt.strftime("%Y-%m-%d %H:%M:%S")
-
-    if "collected_at" in df.columns:
-        collected_local = convert_utc_to_timezone(df["collected_at"], timezone_name)
-        df["collected_local_dt"] = collected_local
-        df["collected_local"] = collected_local.dt.strftime("%Y-%m-%d %H:%M:%S")
-
-    df = df.sort_values(by="collected_local_dt", ascending=False, na_position="last")
-    df = df.reset_index(drop=True)
-    df.insert(0, "display_id", df.index + 1)
-    return df
-
-
-def apply_filters(df, selected_stocks, selected_sources, search_text):
-    filtered_df = df.copy()
-
-    if selected_stocks:
-        filtered_df = filtered_df[filtered_df["stock_symbol"].isin(selected_stocks)]
-
-    if selected_sources:
-        filtered_df = filtered_df[filtered_df["source"].isin(selected_sources)]
-
-    if search_text:
-        q = search_text.lower().strip()
-        filtered_df = filtered_df[
-            filtered_df["title"].fillna("").str.lower().str.contains(q)
-            | filtered_df["summary"].fillna("").str.lower().str.contains(q)
-            | filtered_df["company_name"].fillna("").str.lower().str.contains(q)
-            | filtered_df["source"].fillna("").str.lower().str.contains(q)
-        ]
-
-    return filtered_df
-
-
 def main():
-    st.sidebar.header("Appearance")
-    theme_mode = st.sidebar.selectbox("Theme", ["Dark", "Light"], index=0)
-    colors = get_theme_colors(theme_mode)
+    init_ui_state()
+
+    colors = get_theme_colors()
     inject_css(colors)
 
     st.markdown(
         """
-        <div class="manager-hero">
-            <div class="manager-title">Articles Manager</div>
-            <div class="manager-subtitle">
-                Manage tracked stocks, inspect article records, export data, and delete records safely when needed.
+        <div class="hero">
+            <div class="hero-row">
+                <div class="hero-icon">🗂️</div>
+                <div>
+                    <div class="hero-title">Articles Manager</div>
+                    <div class="hero-subtitle">
+                        Manage tracked stocks, inspect article records, export data, and delete records safely when needed.
+                    </div>
+                </div>
             </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    # ---------- Tracked Stocks ----------
     st.subheader("Tracked Stocks")
 
     tracked_stocks = get_tracked_stocks()
@@ -233,37 +97,18 @@ def main():
 
     st.divider()
 
-    # ---------- Data ----------
     df = load_data()
 
     if df.empty:
         st.warning("No news records found in the database.")
         return
 
-    timezone_options = {
-        "Israel": "Asia/Jerusalem",
-        "UTC": "UTC",
-        "New York": "America/New_York",
-        "London": "Europe/London",
-    }
+    timezone_name = render_global_sidebar(df=df, include_show_urls=True)
 
-    st.sidebar.header("Filters")
-    tz_label = st.sidebar.selectbox("Display timezone", list(timezone_options.keys()), index=0)
-    timezone_name = timezone_options[tz_label]
+    df = prepare_dataframe(df, timezone_name, add_display_id=True)
+    filtered_df = apply_filters(df)
+    show_urls = st.session_state["show_urls"]
 
-    df = prepare_dataframe(df, timezone_name)
-
-    stock_options = sorted(df["stock_symbol"].dropna().unique().tolist())
-    source_options = sorted(df["source"].dropna().unique().tolist())
-
-    selected_stocks = st.sidebar.multiselect("Stock symbols", stock_options, default=[])
-    selected_sources = st.sidebar.multiselect("Sources", source_options, default=[])
-    search_text = st.sidebar.text_input("Search title / summary / source / company")
-    show_urls = st.sidebar.toggle("Show URLs in table", value=False)
-
-    filtered_df = apply_filters(df, selected_stocks, selected_sources, search_text)
-
-    # ---------- Table ----------
     st.subheader("Articles Table")
 
     display_columns = [
@@ -300,7 +145,6 @@ def main():
 
     st.divider()
 
-    # ---------- Export ----------
     st.subheader("Export")
 
     export_df = filtered_df[[
@@ -321,9 +165,7 @@ def main():
 
     st.divider()
 
-    # ---------- Delete by ID ----------
     st.subheader("Delete by Display ID")
-
     st.markdown('<div class="control-card">', unsafe_allow_html=True)
 
     left_col, right_col = st.columns([2.8, 1])
@@ -348,13 +190,11 @@ def main():
 
     st.divider()
 
-    # ---------- Bulk Delete ----------
     st.subheader("Bulk Delete Controls")
     st.markdown('<div class="control-card">', unsafe_allow_html=True)
 
     bulk_col1, bulk_col2 = st.columns(2)
 
-    # Left side: by date
     with bulk_col1:
         st.markdown("#### Delete by Date")
 
@@ -387,7 +227,6 @@ def main():
 
             st.rerun()
 
-    # Right side: by stock
     with bulk_col2:
         st.markdown("#### Delete by Stock Symbol")
 
