@@ -11,6 +11,7 @@ from ui_helpers import (
     prepare_dataframe,
     apply_filters,
 )
+from app import main as run_news_collection
 
 st.set_page_config(
     page_title="Stock News Dashboard",
@@ -19,6 +20,7 @@ st.set_page_config(
 )
 
 
+@st.cache_data
 def load_data():
     data = get_news_as_dicts()
     return pd.DataFrame(data) if data else pd.DataFrame()
@@ -196,6 +198,46 @@ def main():
         """,
         unsafe_allow_html=True,
     )
+
+    st.subheader("⚙️ News Collection Control")
+
+    c1, c2 = st.columns([1, 1])
+
+    with c1:
+        hours_back = st.number_input(
+            "Choose how many hours back to collect news",
+            min_value=1,
+            max_value=168,
+            value=24,
+            step=1,
+        )
+
+    with c2:
+        st.markdown("<br>", unsafe_allow_html=True)
+        run_clicked = st.button("▶ Run collection", use_container_width=True)
+
+    if run_clicked:
+        with st.spinner(f"Collecting news from the last {hours_back} hours..."):
+            try:
+                result = run_news_collection(hours_back=int(hours_back))
+
+                if result["success"]:
+                    st.success(result["message"])
+                    st.info(
+                        f"Tracked stocks: {result['tracked_stocks']} | "
+                        f"Before filter: {result['before_filter']} | "
+                        f"After filter: {result['after_filter']} | "
+                        f"After dedup: {result['after_dedup']} | "
+                        f"Inserted: {result['inserted']} | "
+                        f"Total DB rows: {result['total_rows']}"
+                    )
+                    st.cache_data.clear()
+                    st.rerun()
+                else:
+                    st.warning(result["message"])
+
+            except Exception as exc:
+                st.error(f"Collection failed: {exc}")
 
     df = load_data()
 
