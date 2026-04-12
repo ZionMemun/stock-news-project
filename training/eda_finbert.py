@@ -9,6 +9,9 @@ MODEL_NAME = "ProsusAI/finbert"
 
 
 def main():
+    """
+    Analyze token lengths in Financial PhraseBank dataset.
+    """
     print("Loading dataset")
     dataset = load_dataset(DATASET_NAME, DATASET_CONFIG, trust_remote_code=True)
     full_dataset = dataset["train"]
@@ -21,14 +24,14 @@ def main():
     for example in full_dataset:
         tokens = tokenizer(
             example["sentence"],
-            truncation=False,
+            truncation=False,  # no cut
             padding=False,
         )
-        lengths.append(len(tokens["input_ids"]))
+        lengths.append(len(tokens["input_ids"]))  # token count
 
     lengths_series = pd.Series(lengths)
 
-    print("\nToken Length Statistics: ")
+    print("\nToken Length Statistics:")
     print(f"Number of samples: {len(lengths_series)}")
     print(f"Mean length: {lengths_series.mean():.2f}")
     print(f"Median length: {lengths_series.median():.2f}")
@@ -37,12 +40,13 @@ def main():
 
     print("\nPercentiles:")
     for p in [50, 75, 90, 95, 99]:
-        print(f"P{p}: {lengths_series.quantile(p / 100):.2f}")
+        print(f"P{p}: {lengths_series.quantile(p / 100):.2f}")  # percentile
 
-    print("\nTruncation Analysis: ")
+    print("\nTruncation Analysis:")
     for max_len in [64, 128, 256, 384, 512]:
         num_truncated = (lengths_series > max_len).sum()
         pct_truncated = 100 * num_truncated / len(lengths_series)
+
         print(
             f"max_length={max_len}: "
             f"{num_truncated} samples truncated "

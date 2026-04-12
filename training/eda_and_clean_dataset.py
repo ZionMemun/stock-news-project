@@ -82,9 +82,7 @@ def main():
     print("Loading dataset...")
     df = pd.read_csv(DATA_PATH)
 
-    # ========================
     # BASIC VALIDATION
-    # ========================
     required_cols = {"sentiment", "text"}
     missing_cols = required_cols - set(df.columns)
     if missing_cols:
@@ -100,9 +98,7 @@ def main():
     print("\n===== MISSING VALUES =====")
     print(df.isnull().sum())
 
-    # ========================
     # NORMALIZE BEFORE EDA
-    # ========================
     work_df = df.copy()
 
     # Keep original text for audit
@@ -115,9 +111,7 @@ def main():
     print("\n===== ORIGINAL CLASS DISTRIBUTION =====")
     print(work_df["sentiment"].value_counts(dropna=False))
 
-    # ========================
     # TEXT LENGTH EDA
-    # ========================
     work_df["text_length"] = work_df["text"].apply(len)
 
     print("\n===== TEXT LENGTH ANALYSIS =====")
@@ -142,9 +136,7 @@ def main():
     print(f"Texts shorter than 20 chars: {len(short_texts)}")
     print(short_texts.head(5)[["sentiment", "text", "text_length"]])
 
-    # ========================
     # CORRUPTION CHECK
-    # ========================
     work_df["has_control_private"] = work_df["text"].apply(has_control_or_private_chars)
     work_df["looks_mojibake"] = work_df["text"].apply(looks_like_mojibake)
 
@@ -156,9 +148,7 @@ def main():
         print("\nExamples of mojibake-like rows:")
         print(work_df[work_df["looks_mojibake"]].head(10)[["sentiment", "text"]])
 
-    # ========================
     # CLEANING
-    # ========================
     print("\n===== CLEANING =====")
     clean_df = work_df.copy()
     removed_parts = []
@@ -217,14 +207,10 @@ def main():
     clean_df = clean_df[~duplicate_mask].copy()
     print("Shape after removing duplicates:", clean_df.shape)
 
-    # ========================
     # BUILD REMOVED DF
-    # ========================
     removed_df = pd.concat(removed_parts, ignore_index=True)
 
-    # ========================
     # EDA AFTER CLEANING
-    # ========================
     print("\n===== CLEAN DATA INFO =====")
     print("Clean shape:", clean_df.shape)
 
@@ -249,9 +235,7 @@ def main():
     else:
         print("No rows were removed.")
 
-    # ========================
     # SAVE
-    # ========================
     clean_df = clean_df[["sentiment", "text"]].reset_index(drop=True)
     removed_df = removed_df[["sentiment", "text", "remove_reason"]].reset_index(drop=True)
 
@@ -264,3 +248,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

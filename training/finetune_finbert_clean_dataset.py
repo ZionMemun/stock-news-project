@@ -15,25 +15,20 @@ from transformers import (
     AutoModelForSequenceClassification,
     get_linear_schedule_with_warmup,
 )
-# CONFIG
-# Model already trained on PhraseBank
-MODEL_PATH = "finbert_torch_baseline"
 
-# Our cleaned dataset
+# CONFIG
+MODEL_PATH = "finbert_torch_baseline"
 CLEAN_DATA_PATH = "clean_dataset.csv"
 
-# Original PhraseBank dataset used for the baseline model
 PHRASEBANK_DATASET_NAME = "takala/financial_phrasebank"
 PHRASEBANK_DATASET_CONFIG = "sentences_75agree"
 
-# Outputs
 MISTAKES_OUTPUT_PATH = "mistakes_on_clean_data_before_finetune.csv"
 FINE_TUNED_MODEL_OUTPUT = "finetuned_finbert_on_clean_data"
 
-# Tokenization / training
 MAX_LENGTH = 256
 BATCH_SIZE = 32
-GRADIENT_ACCUMULATION_STEPS = 1  # if OOM, set BATCH_SIZE=16 and this=2
+GRADIENT_ACCUMULATION_STEPS = 1
 LEARNING_RATE = 2e-5
 WEIGHT_DECAY = 0.01
 NUM_EPOCHS = 6
@@ -62,20 +57,19 @@ def set_seed(seed: int):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
+    torch.cuda.manual_seed_all(seed)  # GPU seed
 
 
-# DATA HELPERS
 def normalize_label(label):
     """
-    Normalize text labels to lowercase strings.
+    Normalize label text to lowercase.
     """
     return str(label).strip().lower()
 
 
 def load_clean_dataset(csv_path: str) -> pd.DataFrame:
     """
-    Load clean CSV with columns: sentiment, text
+    Load and clean the local CSV dataset.
     """
     print(f"\nLoading clean dataset from: {csv_path}")
     df = pd.read_csv(csv_path)
@@ -92,7 +86,7 @@ def load_clean_dataset(csv_path: str) -> pd.DataFrame:
     df = df[df["sentiment"].isin(LABEL2ID.keys())].copy()
     df = df[df["text"] != ""].copy()
 
-    df["label"] = df["sentiment"].map(LABEL2ID)
+    df["label"] = df["sentiment"].map(LABEL2ID)  # text -> id
 
     print("Shape:", df.shape)
     print("Class distribution:")
@@ -103,7 +97,7 @@ def load_clean_dataset(csv_path: str) -> pd.DataFrame:
 
 def dataframe_to_hf_dataset(df: pd.DataFrame, tokenizer):
     """
-    Convert pandas DataFrame to Hugging Face Dataset and tokenize it.
+    Convert DataFrame to tokenized HF dataset.
     """
     hf_dataset = Dataset.from_pandas(
         df[["text", "label"]].rename(columns={"label": "labels"}),
@@ -130,13 +124,7 @@ def dataframe_to_hf_dataset(df: pd.DataFrame, tokenizer):
 
 def load_phrasebank_test_dataset(tokenizer):
     """
-    Recreate the PhraseBank split used in the original baseline training
-    so we can evaluate before and after fine-tuning.
-
-    Original setup used:
-    - dataset: takala/financial_phrasebank
-    - config: sentences_75agree
-    - split seed: 42
+    Recreate PhraseBank test split for comparison.
     """
     print("\nLoading PhraseBank dataset for regression check...")
     dataset = load_dataset(
@@ -149,7 +137,7 @@ def load_phrasebank_test_dataset(tokenizer):
     train_valid = full_dataset.train_test_split(
         test_size=0.2,
         seed=RANDOM_SEED,
-        stratify_by_column="label"
+        stratify_by_column="label"  # keep class balance
     )
 
     valid_test = train_valid["test"].train_test_split(
@@ -180,11 +168,9 @@ def load_phrasebank_test_dataset(tokenizer):
     return phrasebank_test_dataset
 
 
-# EVALUATION / PREDICTION
 def evaluate_model(model, dataloader, device):
     """
     Evaluate model on a dataloader.
-    Returns loss, accuracy, macro_f1, y_true, y_pred.
     """
     model.eval()
 
@@ -192,7 +178,7 @@ def evaluate_model(model, dataloader, device):
     all_predictions = []
     all_labels = []
 
-    with torch.no_grad():
+    with torch.no_grad():  # no gradients in eval
         for batch in dataloader:
             input_ids = batch["input_ids"].to(device)
             attention_mask = batch["attention_mask"].to(device)
@@ -209,7 +195,7 @@ def evaluate_model(model, dataloader, device):
 
             total_loss += loss.item()
 
-            predictions = torch.argmax(logits, dim=1)
+            predictions = torch.argmax(logits, dim=1)  # predicted class
 
             all_predictions.extend(predictions.cpu().numpy())
             all_labels.extend(labels.cpu().numpy())
@@ -223,7 +209,7 @@ def evaluate_model(model, dataloader, device):
 
 def print_eval_summary(title: str, loss, acc, macro_f1, y_true=None, y_pred=None):
     """
-    Print a consistent evaluation summary.
+    Print evaluation metrics and reports.
     """
     print(f"\n===== {title} =====")
     print(f"Loss:     {loss:.4f}")
@@ -244,7 +230,7 @@ def print_eval_summary(title: str, loss, acc, macro_f1, y_true=None, y_pred=None
 
 def predict_dataframe(model, tokenizer, df: pd.DataFrame, device):
     """
-    Predict labels for all rows in the dataframe.
+    Predict labels for all rows in dataframe.
     """
     model.eval()
 
@@ -276,7 +262,7 @@ def predict_dataframe(model, tokenizer, df: pd.DataFrame, device):
             )
 
             logits = outputs.logits
-            probs = torch.softmax(logits, dim=1)
+            probs = torch.softmax(logits, dim=1)  # convert to probabilities
 
             confidences, preds = torch.max(probs, dim=1)
 
@@ -301,7 +287,7 @@ def predict_dataframe(model, tokenizer, df: pd.DataFrame, device):
 
 def print_metrics_from_results(title: str, results_df: pd.DataFrame):
     """
-    Print metrics from prediction results dataframe.
+    Print metrics from prediction dataframe.
     """
     y_true = results_df["true_label_id"].tolist()
     y_pred = results_df["pred_label_id"].tolist()
@@ -328,7 +314,7 @@ def print_metrics_from_results(title: str, results_df: pd.DataFrame):
 
 def save_mistakes(results_df: pd.DataFrame, output_path: str):
     """
-    Save wrong predictions on clean data.
+    Save incorrect predictions to CSV.
     """
     mistakes_df = results_df[~results_df["correct"]].copy()
 
@@ -350,12 +336,9 @@ def save_mistakes(results_df: pd.DataFrame, output_path: str):
     print(f"Number of mistakes: {len(mistakes_df)}")
 
 
-# TRAINING
 def fine_tune_on_clean_data(model, tokenizer, clean_df: pd.DataFrame, device):
     """
-    Fine-tune the PhraseBank-trained model on clean_dataset.csv
-    using train/validation/test split, scheduler, weight decay,
-    gradient clipping, and early stopping.
+    Fine-tune baseline model on clean dataset.
     """
     print("\n===== SPLITTING CLEAN DATA =====")
 
@@ -435,15 +418,18 @@ def fine_tune_on_clean_data(model, tokenizer, clean_df: pd.DataFrame, device):
             )
 
             loss = outputs.loss
-            loss = loss / GRADIENT_ACCUMULATION_STEPS
+            loss = loss / GRADIENT_ACCUMULATION_STEPS  # normalize accumulated loss
             loss.backward()
 
             total_train_loss += loss.item() * GRADIENT_ACCUMULATION_STEPS
 
-            should_step = ((step + 1) % GRADIENT_ACCUMULATION_STEPS == 0) or ((step + 1) == len(train_loader))
+            should_step = (
+                ((step + 1) % GRADIENT_ACCUMULATION_STEPS == 0)
+                or ((step + 1) == len(train_loader))
+            )
 
             if should_step:
-                torch.nn.utils.clip_grad_norm_(model.parameters(), MAX_GRAD_NORM)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), MAX_GRAD_NORM)  # clip gradients
                 optimizer.step()
                 scheduler.step()
                 optimizer.zero_grad()
@@ -464,12 +450,15 @@ def fine_tune_on_clean_data(model, tokenizer, clean_df: pd.DataFrame, device):
         if valid_f1 > best_valid_f1:
             best_valid_f1 = valid_f1
             best_epoch = epoch + 1
-            best_model_state = copy.deepcopy(model.state_dict())
+            best_model_state = copy.deepcopy(model.state_dict())  # save best weights
             epochs_without_improvement = 0
             print("New best model found.")
         else:
             epochs_without_improvement += 1
-            print(f"No improvement. Patience counter: {epochs_without_improvement}/{EARLY_STOPPING_PATIENCE}")
+            print(
+                f"No improvement. Patience counter: "
+                f"{epochs_without_improvement}/{EARLY_STOPPING_PATIENCE}"
+            )
 
             if epochs_without_improvement >= EARLY_STOPPING_PATIENCE:
                 print("Early stopping triggered.")
@@ -493,8 +482,10 @@ def fine_tune_on_clean_data(model, tokenizer, clean_df: pd.DataFrame, device):
     return model
 
 
-# MAIN
 def main():
+    """
+    Run evaluation, fine-tuning, and saving flow.
+    """
     set_seed(RANDOM_SEED)
 
     print("Checking PyTorch / CUDA setup...")
@@ -508,7 +499,6 @@ def main():
     if torch.cuda.is_available():
         print("GPU:", torch.cuda.get_device_name(0))
 
-    # Load tokenizer and baseline model
     print("\nLoading tokenizer and model...")
     tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH)
     model = AutoModelForSequenceClassification.from_pretrained(MODEL_PATH)
@@ -516,15 +506,12 @@ def main():
 
     print("Model device:", next(model.parameters()).device)
 
-    # Load our clean dataset
     clean_df = load_clean_dataset(CLEAN_DATA_PATH)
 
-    # Evaluate baseline model on clean data
     clean_results = predict_dataframe(model, tokenizer, clean_df, device)
     print_metrics_from_results("PHRASEBANK-TRAINED MODEL ON CLEAN DATA", clean_results)
     save_mistakes(clean_results, MISTAKES_OUTPUT_PATH)
 
-    # Evaluate baseline model on PhraseBank test set
     phrasebank_test_dataset = load_phrasebank_test_dataset(tokenizer)
     phrasebank_test_loader = DataLoader(
         phrasebank_test_dataset,
@@ -547,10 +534,8 @@ def main():
         pb_y_pred_before
     )
 
-    # Fine-tune on clean data
     model = fine_tune_on_clean_data(model, tokenizer, clean_df, device)
 
-    # Evaluate fine-tuned model on PhraseBank test set
     pb_after_loss, pb_after_acc, pb_after_f1, pb_y_true_after, pb_y_pred_after = evaluate_model(
         model,
         phrasebank_test_loader,
@@ -566,7 +551,7 @@ def main():
         pb_y_pred_after
     )
 
-    print("\n===== PHRASEBANK REGRESSION CHECK =====")
+    print("\nPHRASEBANK REGRESSION CHECK:")
     print(f"Accuracy before finetuning: {pb_before_acc:.4f}")
     print(f"Accuracy after finetuning:  {pb_after_acc:.4f}")
     print(f"Delta accuracy:             {pb_after_acc - pb_before_acc:+.4f}")
@@ -574,7 +559,6 @@ def main():
     print(f"Macro F1 after finetuning:  {pb_after_f1:.4f}")
     print(f"Delta Macro F1:             {pb_after_f1 - pb_before_f1:+.4f}")
 
-    # Save fine-tuned model
     os.makedirs(FINE_TUNED_MODEL_OUTPUT, exist_ok=True)
     model.save_pretrained(FINE_TUNED_MODEL_OUTPUT)
     tokenizer.save_pretrained(FINE_TUNED_MODEL_OUTPUT)

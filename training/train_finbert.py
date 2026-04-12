@@ -32,12 +32,12 @@ def set_seed(seed):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
+    torch.cuda.manual_seed_all(seed)  # GPU seed
 
 
 def tokenize_function(example, tokenizer):
     """
-    Tokenize a single example using fixed-length padding and truncation.
+    Tokenize text with padding and truncation.
     """
     return tokenizer(
         example["sentence"],
@@ -49,7 +49,7 @@ def tokenize_function(example, tokenizer):
 
 def evaluate_model(model, dataloader, device):
     """
-    Evaluate the model on a given dataloader and return loss and metrics.
+    Evaluate model and return loss + metrics.
     """
     model.eval()
 
@@ -57,7 +57,7 @@ def evaluate_model(model, dataloader, device):
     all_predictions = []
     all_labels = []
 
-    with torch.no_grad():
+    with torch.no_grad():  # no gradients
         for batch in dataloader:
             input_ids = batch["input_ids"].to(device)
             attention_mask = batch["attention_mask"].to(device)
@@ -74,7 +74,7 @@ def evaluate_model(model, dataloader, device):
 
             total_loss += loss.item()
 
-            predictions = torch.argmax(logits, dim=1)
+            predictions = torch.argmax(logits, dim=1)  # class prediction
 
             all_predictions.extend(predictions.cpu().numpy())
             all_labels.extend(labels.cpu().numpy())
@@ -87,30 +87,26 @@ def evaluate_model(model, dataloader, device):
 
 
 def main():
+    """
+    Train and evaluate FinBERT model on dataset.
+    """
     set_seed(RANDOM_SEED)
 
     print("Checking PyTorch / CUDA setup...")
     print("torch version:", torch.__version__)
-    print("torch cuda version:", torch.version.cuda)
     print("cuda available:", torch.cuda.is_available())
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print("Device:", device)
-
-    if torch.cuda.is_available():
-        print("GPU:", torch.cuda.get_device_name(0))
 
     print("\nLoading dataset...")
     dataset = load_dataset(DATASET_NAME, DATASET_CONFIG, trust_remote_code=True)
     full_dataset = dataset["train"]
 
-    print("Full dataset size:", len(full_dataset))
-
     print("\nCreating train / validation / test split...")
     train_valid = full_dataset.train_test_split(
         test_size=0.2,
         seed=RANDOM_SEED,
-        stratify_by_column="label"
+        stratify_by_column="label"  # keep class balance
     )
 
     valid_test = train_valid["test"].train_test_split(
@@ -123,27 +119,15 @@ def main():
     valid_dataset = valid_test["train"]
     test_dataset = valid_test["test"]
 
-    print("Train size:", len(train_dataset))
-    print("Validation size:", len(valid_dataset))
-    print("Test size:", len(test_dataset))
-
     print("\nLoading tokenizer...")
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
 
     print("\nTokenizing datasets...")
-    train_dataset = train_dataset.map(
-        lambda x: tokenize_function(x, tokenizer),
-        batched=True
-    )
-    valid_dataset = valid_dataset.map(
-        lambda x: tokenize_function(x, tokenizer),
-        batched=True
-    )
-    test_dataset = test_dataset.map(
-        lambda x: tokenize_function(x, tokenizer),
-        batched=True
-    )
+    train_dataset = train_dataset.map(lambda x: tokenize_function(x, tokenizer), batched=True)
+    valid_dataset = valid_dataset.map(lambda x: tokenize_function(x, tokenizer), batched=True)
+    test_dataset = test_dataset.map(lambda x: tokenize_function(x, tokenizer), batched=True)
 
+    # rename for PyTorch model
     train_dataset = train_dataset.rename_column("label", "labels")
     valid_dataset = valid_dataset.rename_column("label", "labels")
     test_dataset = test_dataset.rename_column("label", "labels")
@@ -155,14 +139,12 @@ def main():
 
     print("\nCreating dataloaders...")
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
-    valid_loader = DataLoader(valid_dataset, batch_size=BATCH_SIZE, shuffle=False)
-    test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
+    valid_loader = DataLoader(valid_dataset, batch_size=BATCH_SIZE)
+    test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE)
 
     print("\nLoading model...")
     model = AutoModelForSequenceClassification.from_pretrained(MODEL_NAME)
     model.to(device)
-
-    print("Model device:", next(model.parameters()).device)
 
     optimizer = AdamW(model.parameters(), lr=LEARNING_RATE)
 
@@ -180,7 +162,7 @@ def main():
             attention_mask = batch["attention_mask"].to(device)
             labels = batch["labels"].to(device)
 
-            optimizer.zero_grad()
+            optimizer.zero_grad()  # reset gradients
 
             outputs = model(
                 input_ids=input_ids,
@@ -189,7 +171,7 @@ def main():
             )
 
             loss = outputs.loss
-            loss.backward()
+            loss.backward()  # backprop
             optimizer.step()
 
             total_train_loss += loss.item()
@@ -200,27 +182,24 @@ def main():
 
         print(f"\nEpoch {epoch + 1}/{NUM_EPOCHS}")
         print(f"Train Loss: {avg_train_loss:.4f}")
-        print(f"Val Loss:   {val_loss:.4f}")
-        print(f"Val Acc:    {val_acc:.4f}")
         print(f"Val F1:     {val_f1:.4f}")
 
         if val_f1 > best_val_f1:
             best_val_f1 = val_f1
             best_model_state = {
-                key: value.cpu().clone()
-                for key, value in model.state_dict().items()
+                k: v.cpu().clone()  # save best weights
+                for k, v in model.state_dict().items()
             }
 
-    print("\nLoading best model from validation...")
+    print("\nLoading best model...")
     model.load_state_dict(best_model_state)
     model.to(device)
 
     print("\nEvaluating on test set...")
     test_loss, test_acc, test_f1, y_true, y_pred = evaluate_model(model, test_loader, device)
 
-    print(f"Test Loss: {test_loss:.4f}")
-    print(f"Test Acc:  {test_acc:.4f}")
-    print(f"Test F1:   {test_f1:.4f}")
+    print(f"Test Acc: {test_acc:.4f}")
+    print(f"Test F1:  {test_f1:.4f}")
 
     print("\nClassification report:")
     print(classification_report(
@@ -238,7 +217,7 @@ def main():
     model.save_pretrained(save_path)
     tokenizer.save_pretrained(save_path)
 
-    print("Model and tokenizer saved successfully.")
+    print("Saved successfully.")
 
 
 if __name__ == "__main__":
