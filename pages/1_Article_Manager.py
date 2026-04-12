@@ -12,7 +12,7 @@ from database.db import (
     delete_news_by_exact_date,
     delete_news_up_to_date,
 )
-from dashboard.ui_helpers import (
+from ui_helpers import (
     init_ui_state,
     get_theme_colors,
     inject_css,
@@ -132,8 +132,7 @@ def main():
     column_config = {}
     if "url" in existing_columns:
         column_config["url"] = st.column_config.LinkColumn(
-            "Article URL",
-            display_text="Open article"
+            "Article URL"
         )
 
     st.dataframe(
