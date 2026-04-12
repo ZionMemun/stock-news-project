@@ -3,7 +3,7 @@ import plotly.express as px
 import streamlit as st
 
 from database.db import get_news_as_dicts
-from ui_helpers import (
+from dashboard.ui_helpers import (
     init_ui_state,
     get_theme_colors,
     inject_css,

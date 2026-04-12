@@ -12,7 +12,7 @@ from database.db import (
     delete_news_by_exact_date,
     delete_news_up_to_date,
 )
-from ui_helpers import (
+from dashboard.ui_helpers import (
     init_ui_state,
     get_theme_colors,
     inject_css,

@@ -22,21 +22,30 @@ st.set_page_config(
 
 @st.cache_data
 def load_data():
+    """
+    Load news data from database.
+    """
     data = get_news_as_dicts()
     return pd.DataFrame(data) if data else pd.DataFrame()
 
 
 def build_kpis(df):
+    """
+    Compute KPI metrics for dashboard.
+    """
     return {
         "articles": len(df),
         "sources": df["source"].nunique() if not df.empty else 0,
         "stocks": df["stock_symbol"].nunique() if not df.empty else 0,
-        "latest": df["collected_local"].iloc[0] if not df.empty else "N/A",
+        "latest": df["collected_local"].iloc[0] if not df.empty else "N/A",  # latest row
         "avg_per_stock": round(len(df) / df["stock_symbol"].nunique(), 1) if not df.empty and df["stock_symbol"].nunique() else 0,
     }
 
 
 def build_insights(df):
+    """
+    Compute additional insights from data.
+    """
     if df.empty:
         return {
             "top_source": "N/A",
@@ -45,17 +54,17 @@ def build_insights(df):
             "avg_summary_len": "N/A",
         }
 
-    top_source = df["source"].value_counts().idxmax() if "source" in df else "N/A"
+    top_source = df["source"].value_counts().idxmax() if "source" in df else "N/A"  # most frequent
     top_stock = df["stock_symbol"].value_counts().idxmax() if "stock_symbol" in df else "N/A"
 
     busiest_hour = "N/A"
     if "published_local_dt" in df and df["published_local_dt"].notna().any():
         tmp = df.dropna(subset=["published_local_dt"]).copy()
-        tmp["hour"] = tmp["published_local_dt"].dt.strftime("%H:00")
+        tmp["hour"] = tmp["published_local_dt"].dt.strftime("%H:00")  # extract hour
         if not tmp.empty:
             busiest_hour = tmp["hour"].value_counts().idxmax()
 
-    avg_summary_len = int(df["summary"].fillna("").str.len().mean()) if "summary" in df and not df.empty else 0
+    avg_summary_len = int(df["summary"].fillna("").str.len().mean()) if "summary" in df and not df.empty else 0  # avg text length
 
     return {
         "top_source": top_source,
@@ -66,6 +75,9 @@ def build_insights(df):
 
 
 def apply_chart_theme(fig, colors):
+    """
+    Apply consistent theme to charts.
+    """
     fig.update_layout(
         template="plotly_dark",
         paper_bgcolor="rgba(0,0,0,0)",
@@ -79,8 +91,11 @@ def apply_chart_theme(fig, colors):
 
 
 def plot_sources(df, colors):
+    """
+    Plot articles per source.
+    """
     d = df["source"].value_counts().reset_index()
-    d.columns = ["source", "count"]
+    d.columns = ["source", "count"]  # rename columns
 
     fig = px.bar(d, x="source", y="count", text="count", title="📰 Articles by Source")
     fig.update_traces(marker_color=colors["accent"])
@@ -89,6 +104,9 @@ def plot_sources(df, colors):
 
 
 def plot_stocks(df, colors):
+    """
+    Plot distribution by stock.
+    """
     d = df["stock_symbol"].value_counts().reset_index()
     d.columns = ["stock_symbol", "count"]
 
@@ -98,11 +116,14 @@ def plot_stocks(df, colors):
 
 
 def plot_activity(df, colors):
+    """
+    Plot publishing activity over time.
+    """
     temp = df.dropna(subset=["published_local_dt"]).copy()
     if temp.empty:
         return None
 
-    temp["published_hour"] = temp["published_local_dt"].dt.floor("h")
+    temp["published_hour"] = temp["published_local_dt"].dt.floor("h")  # round to hour
     grouped = temp.groupby("published_hour").size().reset_index(name="count")
 
     fig = px.line(grouped, x="published_hour", y="count", markers=True, title="⏱ Publishing Activity Over Time")
@@ -112,7 +133,10 @@ def plot_activity(df, colors):
 
 
 def plot_source_stock_heatmap(df, colors):
-    pivot_df = pd.crosstab(df["source"], df["stock_symbol"])
+    """
+    Plot heatmap of source vs stock.
+    """
+    pivot_df = pd.crosstab(df["source"], df["stock_symbol"])  # cross table
     if pivot_df.empty:
         return None
 
@@ -128,11 +152,14 @@ def plot_source_stock_heatmap(df, colors):
 
 
 def plot_top_days(df, colors):
+    """
+    Plot activity by weekday.
+    """
     temp = df.dropna(subset=["published_local_dt"]).copy()
     if temp.empty:
         return None
 
-    temp["weekday"] = temp["published_local_dt"].dt.day_name()
+    temp["weekday"] = temp["published_local_dt"].dt.day_name()  # weekday name
     order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
     grouped = temp["weekday"].value_counts().reindex(order, fill_value=0).reset_index()
     grouped.columns = ["weekday", "count"]
@@ -144,7 +171,10 @@ def plot_top_days(df, colors):
 
 
 def render_headlines(df):
-    recent_df = df.head(5)
+    """
+    Render latest headlines cards.
+    """
+    recent_df = df.head(5)  # top 5
 
     for _, row in recent_df.iterrows():
         url = row.get("url", "#")
@@ -177,6 +207,9 @@ def render_headlines(df):
 
 
 def main():
+    """
+    Main dashboard UI logic.
+    """
     init_ui_state()
 
     colors = get_theme_colors()
@@ -223,7 +256,7 @@ def main():
 
                 if result["success"]:
                     st.success(result["message"])
-                    st.info(
+                    st.info(  # detailed stats
                         f"Tracked stocks: {result['tracked_stocks']} | "
                         f"Before filter: {result['before_filter']} | "
                         f"After filter: {result['after_filter']} | "
@@ -231,7 +264,7 @@ def main():
                         f"Inserted: {result['inserted']} | "
                         f"Total DB rows: {result['total_rows']}"
                     )
-                    st.cache_data.clear()
+                    st.cache_data.clear()  # clear cache
                     st.rerun()
                 else:
                     st.warning(result["message"])
@@ -278,7 +311,7 @@ def main():
         ] if col in filtered_df.columns
     ]].copy()
 
-    csv_data = export_df.to_csv(index=False).encode("utf-8")
+    csv_data = export_df.to_csv(index=False).encode("utf-8")  # convert to CSV bytes
     st.download_button(
         "⬇ Export filtered data as CSV",
         data=csv_data,
