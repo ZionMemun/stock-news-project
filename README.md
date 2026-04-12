@@ -97,7 +97,6 @@ Edit `config.py`:
 
 ```python
 FINNHUB_API_KEY = "YOUR_API_KEY_HERE"
-TRACKED_STOCKS = ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA"]
 ```
 
 ---
